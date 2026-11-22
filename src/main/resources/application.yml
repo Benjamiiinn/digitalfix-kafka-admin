@@ -1,0 +1,25 @@
+
+spring:
+  application:
+    name: digitalfix-kafka-admin
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:29092,localhost:39092,localhost:49092}
+
+server:
+  port: 8086
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  level:
+    org.apache.kafka: WARN
+    com.digitalfix: DEBUG
+
