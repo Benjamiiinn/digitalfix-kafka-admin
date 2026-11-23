@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -19,7 +20,10 @@ import com.digitalfix.kafka_admin.dto.BrokerInfo;
 import com.digitalfix.kafka_admin.dto.ConsumerGroupInfo;
 import com.digitalfix.kafka_admin.dto.ConsumerLagInfo;
 import com.digitalfix.kafka_admin.dto.CreateTopicRequest;
+import com.digitalfix.kafka_admin.dto.TopicConfigInfo;
 import com.digitalfix.kafka_admin.dto.TopicInfo;
+import com.digitalfix.kafka_admin.dto.UpdatePartitionsRequest;
+import com.digitalfix.kafka_admin.dto.UpdateTopicConfigRequest;
 import com.digitalfix.kafka_admin.service.KafkaAdminService;
 
 import jakarta.validation.Valid;
@@ -51,6 +55,38 @@ public class KafkaAdminController {
                    TimeoutException {
 
         return service.getTopic(name);
+    }
+
+    @GetMapping("/topics/{name}/configs")
+    public TopicConfigInfo getTopicConfig(
+            @PathVariable String name)
+            throws InterruptedException,
+                   ExecutionException,
+                   TimeoutException {
+
+        return service.getTopicConfig(name);
+    }
+
+    @PutMapping("/topics/{name}/configs")
+    public void updateTopicConfig(
+            @PathVariable String name,
+            @Valid @RequestBody UpdateTopicConfigRequest request)
+            throws InterruptedException,
+                   ExecutionException,
+                   TimeoutException {
+
+        service.updateTopicConfig(name, request);
+    }
+
+    @PostMapping("/topics/{name}/partitions")
+    public void increasePartitions(
+            @PathVariable String name,
+            @Valid @RequestBody UpdatePartitionsRequest request)
+            throws InterruptedException,
+                   ExecutionException,
+                   TimeoutException {
+
+        service.increasePartitions(name, request);
     }
 
     @GetMapping("/cluster")

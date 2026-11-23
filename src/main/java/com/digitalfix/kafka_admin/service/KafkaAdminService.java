@@ -11,13 +11,18 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
 import org.apache.kafka.clients.admin.AdminClient;
+import org.apache.kafka.clients.admin.AlterConfigOp;
+import org.apache.kafka.clients.admin.Config;
+import org.apache.kafka.clients.admin.ConfigEntry;
 import org.apache.kafka.clients.admin.ListOffsetsResult;
+import org.apache.kafka.clients.admin.NewPartitions;
 import org.apache.kafka.clients.admin.NewTopic;
 import org.apache.kafka.clients.admin.OffsetSpec;
 import org.apache.kafka.clients.admin.TopicDescription;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.common.Node;
 import org.apache.kafka.common.TopicPartition;
+import org.apache.kafka.common.config.ConfigResource;
 import org.apache.kafka.common.TopicPartitionInfo;
 import org.apache.kafka.common.errors.TopicExistsException;
 import org.springframework.stereotype.Service;
@@ -26,7 +31,10 @@ import com.digitalfix.kafka_admin.dto.BrokerInfo;
 import com.digitalfix.kafka_admin.dto.ConsumerGroupInfo;
 import com.digitalfix.kafka_admin.dto.ConsumerLagInfo;
 import com.digitalfix.kafka_admin.dto.CreateTopicRequest;
+import com.digitalfix.kafka_admin.dto.TopicConfigInfo;
 import com.digitalfix.kafka_admin.dto.TopicInfo;
+import com.digitalfix.kafka_admin.dto.UpdatePartitionsRequest;
+import com.digitalfix.kafka_admin.dto.UpdateTopicConfigRequest;
 
 @Service
 public class KafkaAdminService {
@@ -76,6 +84,105 @@ public class KafkaAdminService {
                                 partitions);
         }
 
+        public TopicConfigInfo getTopicConfig(String name)
+                        throws InterruptedException,
+                        ExecutionException,
+                        TimeoutException {
+
+                ConfigResource resource = new ConfigResource(
+                                ConfigResource.Type.TOPIC,
+                                name);
+
+                Config config = adminClient.describeConfigs(List.of(resource))
+                                .all()
+                                .get(15, TimeUnit.SECONDS)
+                                .get(resource);
+
+                Map<String, String> values = new HashMap<>();
+
+                for (ConfigEntry entry : config.entries()) {
+                        if (RELEVANT_TOPIC_CONFIGS.contains(entry.name())) {
+                                values.put(entry.name(), entry.value());
+                        }
+                }
+
+                return new TopicConfigInfo(name, values);
+        }
+
+        public void updateTopicConfig(
+                        String name,
+                        UpdateTopicConfigRequest request)
+                        throws InterruptedException,
+                        ExecutionException,
+                        TimeoutException {
+
+                if (request.retentionMs() == null
+                                && request.cleanupPolicy() == null) {
+                        throw new IllegalArgumentException(
+                                        "Debe indicar retentionMs o cleanupPolicy");
+                }
+
+                List<AlterConfigOp> operations = new ArrayList<>();
+
+                if (request.retentionMs() != null) {
+                        operations.add(new AlterConfigOp(
+                                        new ConfigEntry(
+                                                        "retention.ms",
+                                                        request.retentionMs().toString()),
+                                        AlterConfigOp.OpType.SET));
+                }
+
+                if (request.cleanupPolicy() != null) {
+                        operations.add(new AlterConfigOp(
+                                        new ConfigEntry(
+                                                        "cleanup.policy",
+                                                        request.cleanupPolicy()),
+                                        AlterConfigOp.OpType.SET));
+                }
+
+                ConfigResource resource = new ConfigResource(
+                                ConfigResource.Type.TOPIC,
+                                name);
+
+                adminClient.incrementalAlterConfigs(
+                                Map.of(resource, operations))
+                                .all()
+                                .get(15, TimeUnit.SECONDS);
+        }
+
+        public void increasePartitions(
+                        String name,
+                        UpdatePartitionsRequest request)
+                        throws InterruptedException,
+                        ExecutionException,
+                        TimeoutException {
+
+                TopicDescription description = adminClient.describeTopics(List.of(name))
+                                .allTopicNames()
+                                .get(15, TimeUnit.SECONDS)
+                                .get(name);
+
+                if (description == null) {
+                        throw new IllegalArgumentException(
+                                        "No se encontró el tópico: " + name);
+                }
+
+                int current = description.partitions().size();
+
+                if (request.partitions() <= current) {
+                        throw new IllegalArgumentException(
+                                        "Las particiones deben ser mayores a las actuales ("
+                                                        + current + ")");
+                }
+
+                adminClient.createPartitions(
+                                Map.of(name,
+                                                NewPartitions.increaseTo(
+                                                                request.partitions())))
+                                .all()
+                                .get(15, TimeUnit.SECONDS);
+        }
+
         public List<BrokerInfo> getBrokers()
                         throws InterruptedException,
                         ExecutionException,
@@ -118,6 +225,14 @@ public class KafkaAdminService {
                                 replicas,
                                 isr);
         }
+
+        private static final Set<String> RELEVANT_TOPIC_CONFIGS = Set.of(
+                        "retention.ms",
+                        "cleanup.policy",
+                        "min.insync.replicas",
+                        "segment.bytes",
+                        "max.message.bytes",
+                        "compression.type");
 
         private static final Set<String> PROTECTED_TOPICS = Set.of(
                         "digitalfix-eventos",
